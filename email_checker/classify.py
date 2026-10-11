@@ -58,6 +58,6 @@ class Classifier:
         return label_from_answer(self._answer(state(sender, subject, body), self.min_confidence))
 
     def accuracy(self, jsonl_path) -> float:
-        rows = [json.loads(line) for line in Path(jsonl_path).read_text(encoding="utf-8").splitlines() if line]
+        rows = [json.loads(line) for line in Path(jsonl_path).read_text(encoding="utf-8").split("\n") if line]
         hits = sum(self._answer(r["state"])["choice"] == r["expected"]["label"] for r in rows)
         return hits / len(rows)

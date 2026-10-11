@@ -32,3 +32,14 @@ def test_min_confidence_comes_from_retrained_model_report(tmp_path):
     assert classify.load_min_confidence(tmp_path) == classify.MIN_CONFIDENCE
     (tmp_path / "train_report.json").write_text(json.dumps({"abstention_thresholds": {"choice:2": 0.7}}))
     assert classify.load_min_confidence(tmp_path) == {"choice:2": 0.7}
+
+
+def test_accuracy_reads_eval_lines_containing_unicode_line_separator(tmp_path):
+    import json
+    p = tmp_path / "eval.jsonl"
+    rows = [{"state": {"email": "본문 둘째 줄"}, "expected": {"label": "delete"}},
+            {"state": {"email": "회의"}, "expected": {"label": "read"}}]
+    p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    c = classify.Classifier.__new__(classify.Classifier)
+    c._answer = lambda st, min_confidence=None: {"choice": "delete"}
+    assert c.accuracy(p) == 0.5
