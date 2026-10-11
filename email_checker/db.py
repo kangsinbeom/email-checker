@@ -83,3 +83,7 @@ def get(conn, mail_id):
 def set_label(conn, mail_id, label):
     conn.execute("UPDATE mails SET label = ? WHERE id = ?", (label, mail_id))
     conn.commit()
+
+
+def labelled(conn):
+    return conn.execute("SELECT * FROM mails WHERE label IS NOT NULL ORDER BY id").fetchall()

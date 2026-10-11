@@ -3,12 +3,13 @@ import datetime
 import io
 import logging
 import os
+import subprocess
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import discord
 
-from . import DELETE, HOLD, KEEP, classify, db, jobs, report
+from . import DELETE, HOLD, KEEP, classify, db, jobs, report, train
 from .mailbox import Mailbox
 
 KST = ZoneInfo("Asia/Seoul")
@@ -21,8 +22,15 @@ def run() -> None:
     data_dir.mkdir(exist_ok=True)
     channel_id = int(os.environ["DISCORD_CHANNEL_ID"])
     conn = db.connect(data_dir / "email-checker.db")
+    models_dir = data_dir / "models"
     model = {"classifier": None}
-    lock = asyncio.Lock()  # DB와 모델을 쓰는 작업을 한 번에 하나만
+    lock = asyncio.Lock()          # DB와 모델을 쓰는 작업을 한 번에 하나만
+    retrain_lock = asyncio.Lock()  # 재학습은 한 번에 하나만, 밀린 요청은 차례로
+    background = set()
+
+    def load_classifier():
+        current = models_dir / "current"
+        return classify.Classifier(current if current.exists() else None)
 
     def open_boxes():
         boxes = []
@@ -57,10 +65,40 @@ def run() -> None:
                       "고치지 않은 줄은 맞은 것으로, 보류로 둔 줄은 다음 보고서에 다시 실려요.",
                       file=discord.File(io.BytesIO(data), filename=name))
 
+    async def retrain(ch):
+        async with retrain_lock:
+            work = models_dir / "work"
+            try:
+                async with lock:
+                    n_train, n_eval = await asyncio.to_thread(train.export, conn, work)
+                if n_train < train.MIN_TRAIN or n_eval < train.MIN_EVAL:
+                    await ch.send(f"학습자료가 아직 부족해서 재학습을 건너뛰었어요 "
+                                  f"(학습 {n_train}/{train.MIN_TRAIN}통, 시험 {n_eval}/{train.MIN_EVAL}통).")
+                    return
+                await ch.send(f"🧠 재학습을 시작했어요 (학습 {n_train}통, 시험 {n_eval}통). 끝나면 알려 드릴게요.")
+                # 몇 시간 걸리는 학습은 lock 밖에서 돌려 보고서와 검토를 막지 않는다.
+                candidate = await asyncio.to_thread(train.run_laya, work)
+                async with lock:
+                    old = await asyncio.to_thread(model["classifier"].accuracy, work / "eval.jsonl")
+                    new = train.new_accuracy(candidate)
+                    if new >= old:
+                        train.promote(models_dir, candidate)
+                        model["classifier"] = await asyncio.to_thread(load_classifier)
+            except subprocess.CalledProcessError as e:
+                log.error("laya-train failed: %s", e.stderr)
+                await ch.send(f"⚠️ 재학습이 실패했어요:\n```{(e.stderr or '')[-1500:]}```")
+                return
+            except Exception as e:
+                log.exception("retrain failed")
+                await ch.send(f"⚠️ 재학습이 실패했어요: {e}")
+                return
+        verdict = "새 모델로 교체했어요" if new >= old else "기존 모델이 더 나아서 교체하지 않았어요"
+        await ch.send(f"재학습 끝: 시험 정확도 기존 {old:.0%} → 새 모델 {new:.0%}. {verdict}.")
+
     @client.event
     async def on_ready():
         if model["classifier"] is None:
-            model["classifier"] = await asyncio.to_thread(classify.Classifier)
+            model["classifier"] = await asyncio.to_thread(load_classifier)
         log.info("ready as %s", client.user)
 
     @client.event
@@ -76,7 +114,7 @@ def run() -> None:
             data = await att.read()
             try:
                 async with lock:
-                    text, _ = await asyncio.to_thread(jobs.review, conn, data)
+                    text, learned = await asyncio.to_thread(jobs.review, conn, data)
             except report.CsvError as e:
                 await message.reply(f"⚠️ {e}")
                 continue
@@ -85,5 +123,9 @@ def run() -> None:
                 await message.reply(f"⚠️ 처리하지 못했어요: {e}")
                 continue
             await message.reply(text)
+            if learned:
+                task = asyncio.create_task(retrain(message.channel))
+                background.add(task)
+                task.add_done_callback(background.discard)
 
     client.run(os.environ["DISCORD_TOKEN"])

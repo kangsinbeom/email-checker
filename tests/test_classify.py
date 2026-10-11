@@ -22,3 +22,13 @@ def test_real_model_korean():
     c = classify.Classifier()
     assert c.classify("쇼핑몰 <ad@shop.com>", "(광고) 신규 가입 쿠폰 5만원", "오늘 자정 마감 이벤트") in (DELETE, HOLD)
     assert c.classify("민수 <minsu@x.com>", "주말 저녁", "토요일 7시에 저녁 같이 먹을래?") in (KEEP, HOLD)
+
+
+def test_min_confidence_comes_from_retrained_model_report(tmp_path):
+    import json
+    assert classify.load_min_confidence(None) == classify.MIN_CONFIDENCE
+    assert classify.load_min_confidence(tmp_path) == classify.MIN_CONFIDENCE
+    (tmp_path / "train_report.json").write_text(json.dumps({"abstention_thresholds": {}}))
+    assert classify.load_min_confidence(tmp_path) == classify.MIN_CONFIDENCE
+    (tmp_path / "train_report.json").write_text(json.dumps({"abstention_thresholds": {"choice:2": 0.7}}))
+    assert classify.load_min_confidence(tmp_path) == {"choice:2": 0.7}

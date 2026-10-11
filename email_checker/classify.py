@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import laya
 
 from . import DELETE, HOLD, KEEP
@@ -15,7 +18,8 @@ QUESTIONS = {
     }
 }
 TO_LABEL = {"delete": DELETE, "read": KEEP}
-# 재학습 전 기본 모델용 보류 기준값.
+FROM_LABEL = {v: k for k, v in TO_LABEL.items()}
+# 재학습 전 기본 모델용 보류 기준값. 재학습한 모델은 train_report.json의 값을 쓴다.
 MIN_CONFIDENCE = 0.9
 
 
@@ -30,12 +34,30 @@ def label_from_answer(answer) -> str:
     return TO_LABEL[answer["choice"]]
 
 
+def load_min_confidence(model_dir):
+    report = Path(model_dir) / "train_report.json" if model_dir else None
+    if report and report.exists():
+        thresholds = json.loads(report.read_text()).get("abstention_thresholds")
+        if thresholds:
+            return thresholds
+    return MIN_CONFIDENCE
+
+
 class Classifier:
-    def __init__(self):
+    def __init__(self, model_dir=None):
         # MX450(1.64GiB)은 추론에서도 OOM이 나서 CPU로 돌린다. 메일 한 통에 0.2~0.5초.
-        self.agent = laya.load("ml", device="cpu")
+        self.agent = laya.load(str(model_dir) if model_dir else "ml", device="cpu")
+        self.min_confidence = load_min_confidence(model_dir)
+
+    def _answer(self, st, min_confidence=None) -> dict:
+        result = laya.decide(self.agent, st, questions=QUESTIONS, return_details=True,
+                             min_confidence=min_confidence)
+        return result.answers["label"]
 
     def classify(self, sender, subject, body) -> str:
-        result = laya.decide(self.agent, state(sender, subject, body), questions=QUESTIONS,
-                             return_details=True, min_confidence=MIN_CONFIDENCE)
-        return label_from_answer(result.answers["label"])
+        return label_from_answer(self._answer(state(sender, subject, body), self.min_confidence))
+
+    def accuracy(self, jsonl_path) -> float:
+        rows = [json.loads(line) for line in Path(jsonl_path).read_text(encoding="utf-8").splitlines() if line]
+        hits = sum(self._answer(r["state"])["choice"] == r["expected"]["label"] for r in rows)
+        return hits / len(rows)
