@@ -87,3 +87,9 @@ def set_label(conn, mail_id, label):
 
 def labelled(conn):
     return conn.execute("SELECT * FROM mails WHERE label IS NOT NULL ORDER BY id").fetchall()
+
+
+def reset_predictions(conn):
+    # 모델이 바뀌면 아직 검토하지 않은 메일만 다시 분류한다. 검토한 메일의 예측은 정답률 기록으로 남긴다.
+    conn.execute("UPDATE mails SET predicted = NULL WHERE source = 'mail' AND label IS NULL")
+    conn.commit()

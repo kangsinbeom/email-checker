@@ -149,3 +149,19 @@ def test_review_warns_about_unknown_ids(tmp_path):
     run(conn, FakeBox("gmail", {1: mail(1, "광고")}))
     text, learned = reviewed(conn, "id,분류\n1,삭제\n99,삭제\n")
     assert learned == 1 and "99" in text
+
+
+def test_reset_predictions_reclassifies_only_unreviewed_mail(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의")})
+    run(conn, box)
+    reviewed(conn, "id,분류\n1,확인\n")
+    db.reset_predictions(conn)
+
+    class AllDelete:
+        def classify(self, *a):
+            return DELETE
+
+    data, _ = jobs.daily(conn, lambda: [box], AllDelete())
+    assert [(r[0], r[-1]) for r in read(data)[1:]] == [(DELETE, "2")]
+    assert db.get(conn, 1)["predicted"] == DELETE  # 검토한 메일의 예측은 그대로(정답률 기록용)

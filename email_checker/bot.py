@@ -86,6 +86,7 @@ def run() -> None:
                     if new >= old:
                         train.promote(models_dir, candidate)
                         model["classifier"] = await asyncio.to_thread(load_classifier)
+                        db.reset_predictions(conn)
             except subprocess.CalledProcessError as e:
                 log.error("laya-train failed: %s", e.stderr)
                 await ch.send(f"⚠️ 재학습이 실패했어요:\n```{(e.stderr or '')[-1500:]}```")
@@ -94,7 +95,7 @@ def run() -> None:
                 log.exception("retrain failed")
                 await ch.send(f"⚠️ 재학습이 실패했어요: {e}")
                 return
-        verdict = "새 모델로 교체했어요" if new >= old else "기존 모델이 더 나아서 교체하지 않았어요"
+        verdict = "새 모델로 교체했어요. 다음 보고서는 남은 메일을 새 모델로 다시 분류해요" if new >= old else "기존 모델이 더 나아서 교체하지 않았어요"
         await ch.send(f"재학습 끝: 시험 정확도(삭제·확인 각각 맞힌 비율의 평균) 기존 {old:.0%} → 새 모델 {new:.0%}. {verdict}.")
 
     @client.event

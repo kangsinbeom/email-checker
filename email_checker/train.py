@@ -13,17 +13,23 @@ MIN_TRAIN, MIN_EVAL = 20, 10
 def export(conn, work: Path):
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    counts = {"train": 0, "eval": 0}
-    with open(work / "train.jsonl", "w", encoding="utf-8") as tr, \
-            open(work / "eval.jsonl", "w", encoding="utf-8") as ev:
-        for row in db.labelled(conn):
-            # 시험은 실제 메일로만 한다. id로 나눠야 매번 같은 메일이 시험용으로 남는다.
-            split = "eval" if row["source"] == "mail" and row["id"] % 5 == 0 else "train"
-            line = {"state": state(row["sender"], row["subject"], row["body"]),
-                    "questions": QUESTIONS, "expected": {"label": FROM_LABEL[row["label"]]}}
-            (ev if split == "eval" else tr).write(json.dumps(line, ensure_ascii=False) + "\n")
-            counts[split] += 1
-    return counts["train"], counts["eval"]
+    train, evals = {}, []
+    for row in db.labelled(conn):
+        line = json.dumps({"state": state(row["sender"], row["subject"], row["body"]),
+                           "questions": QUESTIONS, "expected": {"label": FROM_LABEL[row["label"]]}},
+                          ensure_ascii=False) + "\n"
+        # 시험은 실제 메일로만 한다. id로 나눠야 매번 같은 메일이 시험용으로 남는다.
+        if row["source"] == "mail" and row["id"] % 5 == 0:
+            evals.append(line)
+        else:
+            train.setdefault(row["label"], []).append(line)
+    # 적은 쪽 정답을 반복해 수를 맞춘다. 삭제 77 : 확인 12로 학습하면 전부 삭제라고 답하는
+    # 모델이 나왔다(2026-10-12 실측).
+    most = max(map(len, train.values()), default=0)
+    lines = [rows[i % len(rows)] for rows in train.values() for i in range(most)]
+    (work / "train.jsonl").write_text("".join(lines), encoding="utf-8")
+    (work / "eval.jsonl").write_text("".join(evals), encoding="utf-8")
+    return len(lines), len(evals)
 
 
 def run_laya(work: Path) -> Path:

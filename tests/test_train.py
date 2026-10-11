@@ -43,3 +43,14 @@ def test_promote_keeps_one_previous(tmp_path):
     assert (models / "current" / "name").read_text() == "third"
     assert (models / "previous" / "name").read_text() == "second"
     assert not c.exists()
+
+
+def test_export_repeats_minority_label_in_train_only(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    for n in range(1, 13):  # 시험: 5, 10 / 학습: 삭제 8, 확인 2
+        mail_id = db.add_mail(conn, "gmail", f"<{n}>", "A", f"제목{n}", "본문", "", "")
+        db.set_label(conn, mail_id, KEEP if n in (3, 7, 10) else DELETE)
+    assert train.export(conn, tmp_path / "work") == (16, 2)
+    tr = [r["expected"]["label"] for r in lines(tmp_path / "work" / "train.jsonl")]
+    assert tr.count("delete") == tr.count("read") == 8
+    assert len(lines(tmp_path / "work" / "eval.jsonl")) == 2
