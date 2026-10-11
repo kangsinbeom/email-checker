@@ -28,3 +28,6 @@ token*.json
 .mypy_cache/
 .coverage
 htmlcov/
+
+# Runtime data (mail DB, models)
+data/

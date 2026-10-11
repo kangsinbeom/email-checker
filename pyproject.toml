@@ -5,5 +5,14 @@ description = "Email triage powered by the Laya decision model"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "discord-py>=2.7",
     "laya>=0.4.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

@@ -7,5 +7,5 @@ Email triage powered by [Laya](https://huggingface.co/convaiinnovations/laya), a
 ```bash
 uv sync
 cp .env.example .env
-USE_TF=0 uv run python main.py
+uv run --env-file .env python main.py
 ```
