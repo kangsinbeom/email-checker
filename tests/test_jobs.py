@@ -30,8 +30,9 @@ class FakeClassifier:
         return {"광고": DELETE, "회의": KEEP}.get(subject, HOLD)
 
 
-def mail(n, subject, sender="A <a@x.com>"):
-    return Mail(f"<{n}>", sender, subject, "본문", f"https://mail.google.com/mail/u/0/#all/{n:x}")
+def mail(n, subject, sender="A <a@x.com>", date=None):
+    return Mail(f"<{n}>", sender, subject, "본문", f"https://mail.google.com/mail/u/0/#all/{n:x}",
+                date or f"2026-10-{n:02d} 09:00")
 
 
 def read(data):
@@ -42,16 +43,16 @@ def run(conn, box):
     return jobs.daily(conn, lambda: [box], FakeClassifier())
 
 
-def test_daily_reports_every_unreviewed_mail_with_its_classification(tmp_path):
+def test_daily_reports_every_unreviewed_mail_newest_first(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매")})
     data, counts = run(conn, box)
     assert data.startswith(b"\xef\xbb\xbf")  # Numbers/Excel이 한글을 UTF-8로 읽게 하는 BOM
     assert read(data) == [
-        ["id", "분류", "제목", "보낸 사람", "링크"],
-        ["1", DELETE, "광고", "A <a@x.com>", "https://mail.google.com/mail/u/0/#all/1"],
-        ["2", KEEP, "회의", "A <a@x.com>", "https://mail.google.com/mail/u/0/#all/2"],
-        ["3", HOLD, "애매", "A <a@x.com>", "https://mail.google.com/mail/u/0/#all/3"],
+        ["분류", "날짜", "메일함", "보낸 사람", "제목", "링크", "id"],
+        [HOLD, "2026-10-03 09:00", "Gmail", "A <a@x.com>", "애매", "https://mail.google.com/mail/u/0/#all/3", "3"],
+        [KEEP, "2026-10-02 09:00", "Gmail", "A <a@x.com>", "회의", "https://mail.google.com/mail/u/0/#all/2", "2"],
+        [DELETE, "2026-10-01 09:00", "Gmail", "A <a@x.com>", "광고", "https://mail.google.com/mail/u/0/#all/1", "1"],
     ]
     assert counts == {DELETE: 1, KEEP: 1, HOLD: 1}
     assert box.closed
@@ -66,14 +67,14 @@ def test_daily_keeps_reporting_unreviewed_mail_and_fetches_only_new(tmp_path):
     box.fetch = lambda uid, v: fetched.append(uid) or box.mails[uid]
     data, counts = run(conn, box)
     assert fetched == [2]
-    assert [r[0] for r in read(data)[1:]] == ["1", "2"]
+    assert sorted(r[-1] for r in read(data)[1:]) == ["1", "2"]
 
 
 def test_daily_skips_known_mail_after_uidvalidity_reset(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     run(conn, FakeBox("gmail", {1: mail(1, "광고")}))
     data, _ = run(conn, FakeBox("gmail", {1: mail(1, "광고"), 2: mail(9, "회의")}, validity=2))
-    assert [r[2] for r in read(data)[1:]] == ["광고", "회의"]
+    assert [r[4] for r in read(data)[1:]] == ["회의", "광고"]
 
 
 def test_daily_neutralises_formula_in_subject_and_sender(tmp_path):
@@ -81,8 +82,8 @@ def test_daily_neutralises_formula_in_subject_and_sender(tmp_path):
     box = FakeBox("gmail", {1: mail(1, '=HYPERLINK("http://evil")', sender="@evil"),
                             2: mail(2, "+1"), 3: mail(3, "-50% 세일")})
     rows = read(run(conn, box)[0])[1:]
-    assert [(r[2], r[3]) for r in rows] == [
-        ('\'=HYPERLINK("http://evil")', "'@evil"), ("'+1", "A <a@x.com>"), ("'-50% 세일", "A <a@x.com>")]
+    assert [(r[4], r[3]) for r in rows] == [
+        ("'-50% 세일", "A <a@x.com>"), ("'+1", "A <a@x.com>"), ('\'=HYPERLINK("http://evil")', "'@evil")]
 
 
 def test_daily_with_no_mail_reports_nothing(tmp_path):
@@ -109,9 +110,9 @@ def reviewed(conn, text):
 def test_daily_reports_both_mailboxes(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     naver = FakeBox("naver", {1: mail(1, "광고")})
-    gmail = FakeBox("gmail", {1: mail(1, "회의")})  # 같은 Message-ID라도 계정이 다르면 다른 메일
+    gmail = FakeBox("gmail", {1: mail(1, "회의", date="2026-10-05 09:00")})  # 같은 Message-ID라도 계정이 다르면 다른 메일
     data, _ = jobs.daily(conn, lambda: [naver, gmail], FakeClassifier())
-    assert [r[2] for r in read(data)[1:]] == ["광고", "회의"]
+    assert [(r[2], r[4]) for r in read(data)[1:]] == [("Gmail", "회의"), ("네이버", "광고")]
 
 
 def test_review_reports_initial_accuracy_as_unchanged_rows(tmp_path):
@@ -125,7 +126,7 @@ def test_review_reports_initial_accuracy_as_unchanged_rows(tmp_path):
     assert "보류였던 메일 → 삭제 0, 확인 1, 그대로 보류 1" in text
     assert learned == 4
     data, _ = run(conn, box)
-    assert [r[0] for r in read(data)[1:]] == ["5"]  # 보류로 남긴 줄만 다시 실린다
+    assert [r[-1] for r in read(data)[1:]] == ["5"]  # 보류로 남긴 줄만 다시 실린다
 
 
 def test_review_reads_cp949_csv_saved_by_excel(tmp_path):

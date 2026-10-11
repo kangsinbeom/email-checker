@@ -51,7 +51,10 @@ def run() -> None:
             await ch.send("검토할 메일이 없어요.")
             return
         name = f"보고서-{datetime.datetime.now(KST):%Y-%m-%d}.csv"
-        await ch.send(f"삭제 {counts[DELETE]} · 확인 {counts[KEEP]} · 보류 {counts[HOLD]}",
+        await ch.send(f"📬 검토할 메일 {sum(counts.values())}통 (삭제 {counts[DELETE]} · 확인 {counts[KEEP]} · "
+                      f"보류 {counts[HOLD]})\n"
+                      "첨부 CSV의 '분류' 칸을 삭제/확인/보류로 고쳐 이 채널에 다시 올려 주세요. "
+                      "고치지 않은 줄은 맞은 것으로, 보류로 둔 줄은 다음 보고서에 다시 실려요.",
                       file=discord.File(io.BytesIO(data), filename=name))
 
     @client.event

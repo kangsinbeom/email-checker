@@ -3,7 +3,8 @@ import io
 
 from . import DELETE, HOLD, KEEP
 
-COLUMNS = ["id", "분류", "제목", "보낸 사람", "링크"]
+COLUMNS = ["분류", "날짜", "메일함", "보낸 사람", "제목", "링크", "id"]
+ACCOUNTS = {"naver": "네이버", "gmail": "Gmail"}
 
 
 def _cell(value: str) -> str:
@@ -16,7 +17,8 @@ def write_report(rows) -> bytes:
     writer = csv.writer(buf)
     writer.writerow(COLUMNS)
     for r in rows:
-        writer.writerow([r["id"], r["predicted"], _cell(r["subject"]), _cell(r["sender"]), r["link"]])
+        writer.writerow([r["predicted"], r["date"], ACCOUNTS[r["account"]], _cell(r["sender"]),
+                         _cell(r["subject"]), r["link"], r["id"]])
     return buf.getvalue().encode("utf-8-sig")
 
 

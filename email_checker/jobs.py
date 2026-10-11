@@ -10,7 +10,7 @@ def collect(conn, box) -> int:
     added = 0
     for uid in box.uids_after(last):
         m = box.fetch(uid, validity)
-        if db.add_mail(conn, box.account, m.message_id, m.sender, m.subject, m.body, m.link) is not None:
+        if db.add_mail(conn, box.account, m.message_id, m.sender, m.subject, m.body, m.link, m.date) is not None:
             added += 1
         db.set_cursor(conn, box.account, validity, uid)
     return added

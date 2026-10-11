@@ -4,8 +4,11 @@ import imaplib
 import re
 from dataclasses import dataclass
 from email import policy
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 HOSTS = {"naver": "imap.naver.com", "gmail": "imap.gmail.com"}
+KST = ZoneInfo("Asia/Seoul")
 KOREAN_CHARSETS = {"ks_c_5601-1987", "ks_c_5601", "euc-kr", "euc_kr"}
 
 
@@ -16,6 +19,7 @@ class Mail:
     subject: str
     body: str
     link: str
+    date: str  # 한국 시간 "YYYY-MM-DD HH:MM", 모르면 ""
 
 
 def html_to_text(s: str) -> str:
@@ -41,7 +45,15 @@ def parse_message(raw: bytes):
     if part is not None and part.get_content_type() == "text/html":
         body = html_to_text(body)
     return (str(msg.get("Message-ID") or "").strip(), str(msg.get("From") or ""),
-            str(msg.get("Subject") or ""), body)
+            str(msg.get("Subject") or ""), body, _date(msg))
+
+
+def _date(msg) -> str:
+    try:
+        d = parsedate_to_datetime(str(msg["Date"]))
+    except (TypeError, ValueError):
+        return ""
+    return (d.astimezone(KST) if d.tzinfo else d).strftime("%Y-%m-%d %H:%M")
 
 
 def gmail_link(msgid: int) -> str:
@@ -70,10 +82,10 @@ class Mailbox:
         gmail = self.account == "gmail"
         _, data = self.imap.uid("FETCH", str(uid), "(X-GM-MSGID BODY.PEEK[])" if gmail else "(BODY.PEEK[])")
         meta, raw = data[0]
-        message_id, sender, subject, body = parse_message(raw)
+        message_id, sender, subject, body, date = parse_message(raw)
         # ponytail: 네이버 메일별 링크 형식을 모른다. 알게 되면 여기서 만든다.
         link = gmail_link(int(re.search(rb"X-GM-MSGID (\d+)", meta).group(1))) if gmail else ""
-        return Mail(message_id or f"uid:{uidvalidity}:{uid}", sender, subject, body, link)
+        return Mail(message_id or f"uid:{uidvalidity}:{uid}", sender, subject, body, link, date)
 
     def close(self):
         try:

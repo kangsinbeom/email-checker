@@ -2,14 +2,20 @@ from email_checker import mailbox
 from email_checker.mailbox import Mailbox
 
 PLAIN = (
-    "Message-ID: <m1@x.com>\r\nFrom: =?UTF-8?B?7ZmN6ri464+Z?= <hong@x.com>\r\n"
+    "Message-ID: <m1@x.com>\r\nDate: Sun, 11 Oct 2026 01:08:00 +0000\r\nFrom: =?UTF-8?B?7ZmN6ri464+Z?= <hong@x.com>\r\n"
     "Subject: =?UTF-8?B?7ZqM7J2Y?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n안녕하세요\r\n"
 ).encode()
 
 
 def test_parse_plain_utf8_with_encoded_headers():
-    message_id, sender, subject, body = mailbox.parse_message(PLAIN)
+    message_id, sender, subject, body, date = mailbox.parse_message(PLAIN)
     assert (message_id, sender, subject, body.strip()) == ("<m1@x.com>", "홍길동 <hong@x.com>", "회의", "안녕하세요")
+    assert date == "2026-10-11 10:08"  # 한국 시간
+
+
+def test_parse_missing_or_broken_date():
+    assert mailbox.parse_message(b"Subject: s\r\n\r\nb")[4] == ""
+    assert mailbox.parse_message(b"Date: yesterday\r\nSubject: s\r\n\r\nb")[4] == ""
 
 
 def test_parse_html_only():

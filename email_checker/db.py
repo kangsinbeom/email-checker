@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS mails (
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
     link TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL DEFAULT 'mail',
     predicted TEXT,
     label TEXT,
@@ -31,11 +32,11 @@ def connect(path) -> sqlite3.Connection:
     return conn
 
 
-def add_mail(conn, account, message_id, sender, subject, body, link):
+def add_mail(conn, account, message_id, sender, subject, body, link, date):
     cur = conn.execute(
-        "INSERT OR IGNORE INTO mails (account, message_id, sender, subject, body, link)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (account, message_id, sender, subject, body, link),
+        "INSERT OR IGNORE INTO mails (account, message_id, sender, subject, body, link, date)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (account, message_id, sender, subject, body, link, date),
     )
     conn.commit()
     return cur.lastrowid if cur.rowcount else None
@@ -54,7 +55,7 @@ def set_predicted(conn, mail_id, label):
 
 def unreviewed(conn):
     return conn.execute(
-        "SELECT * FROM mails WHERE source = 'mail' AND label IS NULL ORDER BY id"
+        "SELECT * FROM mails WHERE source = 'mail' AND label IS NULL ORDER BY date DESC, id DESC"
     ).fetchall()
 
 
