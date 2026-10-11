@@ -78,9 +78,11 @@ def run() -> None:
                 await ch.send(f"🧠 재학습을 시작했어요 (학습 {n_train}통, 시험 {n_eval}통). 끝나면 알려 드릴게요.")
                 # 몇 시간 걸리는 학습은 lock 밖에서 돌려 보고서와 검토를 막지 않는다.
                 candidate = await asyncio.to_thread(train.run_laya, work)
+                # 두 모델을 같은 방식(정답별 맞힌 비율의 평균)으로 직접 잰다.
+                fresh = await asyncio.to_thread(classify.Classifier, candidate)
+                new = await asyncio.to_thread(fresh.accuracy, work / "eval.jsonl")
                 async with lock:
                     old = await asyncio.to_thread(model["classifier"].accuracy, work / "eval.jsonl")
-                    new = train.new_accuracy(candidate)
                     if new >= old:
                         train.promote(models_dir, candidate)
                         model["classifier"] = await asyncio.to_thread(load_classifier)
@@ -93,7 +95,7 @@ def run() -> None:
                 await ch.send(f"⚠️ 재학습이 실패했어요: {e}")
                 return
         verdict = "새 모델로 교체했어요" if new >= old else "기존 모델이 더 나아서 교체하지 않았어요"
-        await ch.send(f"재학습 끝: 시험 정확도 기존 {old:.0%} → 새 모델 {new:.0%}. {verdict}.")
+        await ch.send(f"재학습 끝: 시험 정확도(삭제·확인 각각 맞힌 비율의 평균) 기존 {old:.0%} → 새 모델 {new:.0%}. {verdict}.")
 
     @client.event
     async def on_ready():

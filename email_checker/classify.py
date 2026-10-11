@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 import laya
@@ -58,6 +59,12 @@ class Classifier:
         return label_from_answer(self._answer(state(sender, subject, body), self.min_confidence))
 
     def accuracy(self, jsonl_path) -> float:
+        # 정답별 맞힌 비율의 평균. 삭제가 대부분인 시험 세트에서 "전부 삭제" 모델이
+        # 높은 점수를 받지 못하게 한다(2026-10-12 실측: 전체 정확도 86%, 이 방식 50%).
         rows = [json.loads(line) for line in Path(jsonl_path).read_text(encoding="utf-8").split("\n") if line]
-        hits = sum(self._answer(r["state"])["choice"] == r["expected"]["label"] for r in rows)
-        return hits / len(rows)
+        hits, totals = Counter(), Counter()
+        for r in rows:
+            label = r["expected"]["label"]
+            totals[label] += 1
+            hits[label] += self._answer(r["state"])["choice"] == label
+        return sum(hits[k] / totals[k] for k in totals) / len(totals)

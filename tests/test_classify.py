@@ -43,3 +43,16 @@ def test_accuracy_reads_eval_lines_containing_unicode_line_separator(tmp_path):
     c = classify.Classifier.__new__(classify.Classifier)
     c._answer = lambda st, min_confidence=None: {"choice": "delete"}
     assert c.accuracy(p) == 0.5
+
+
+def test_accuracy_averages_per_label_so_all_delete_model_scores_half(tmp_path):
+    import json
+    p = tmp_path / "eval.jsonl"
+    labels = ["delete"] * 19 + ["read"] * 3
+    p.write_text("".join(json.dumps({"state": {"email": str(i)}, "expected": {"label": lab}}) + "\n"
+                         for i, lab in enumerate(labels)), encoding="utf-8")
+    c = classify.Classifier.__new__(classify.Classifier)
+    c._answer = lambda st, min_confidence=None: {"choice": "delete"}
+    assert c.accuracy(p) == 0.5
+    c._answer = lambda st, min_confidence=None: {"choice": "read" if st["email"] in ("19", "20") else "delete"}
+    assert c.accuracy(p) == (1 + 2 / 3) / 2

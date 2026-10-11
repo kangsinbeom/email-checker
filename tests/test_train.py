@@ -27,19 +27,19 @@ def test_export_replaces_previous_work(tmp_path):
     assert not (tmp_path / "work" / "candidate").exists()
 
 
-def test_new_accuracy_and_promote_keeps_one_previous(tmp_path):
+def test_promote_keeps_one_previous(tmp_path):
     models = tmp_path / "models"
 
-    def candidate(acc):
+    def candidate(name):
         c = models / "work" / "candidate"
         c.mkdir(parents=True)
-        (c / "train_report.json").write_text(json.dumps({"after": {"accuracy": acc}}))
+        (c / "name").write_text(name)
         return c
 
-    c = candidate(0.8)
-    assert train.new_accuracy(c) == 0.8
+    c = candidate("first")
     train.promote(models, c)
-    train.promote(models, candidate(0.9))
-    assert train.new_accuracy(models / "current") == 0.9
-    assert train.new_accuracy(models / "previous") == 0.8
+    train.promote(models, candidate("second"))
+    train.promote(models, candidate("third"))
+    assert (models / "current" / "name").read_text() == "third"
+    assert (models / "previous" / "name").read_text() == "second"
     assert not c.exists()

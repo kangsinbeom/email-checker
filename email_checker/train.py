@@ -38,10 +38,6 @@ def run_laya(work: Path) -> Path:
     return candidate
 
 
-def new_accuracy(candidate: Path) -> float:
-    return json.loads((candidate / "train_report.json").read_text())["after"]["accuracy"]
-
-
 def promote(models_dir: Path, candidate: Path) -> None:
     current, previous = models_dir / "current", models_dir / "previous"
     shutil.rmtree(previous, ignore_errors=True)
