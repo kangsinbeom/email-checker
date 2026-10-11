@@ -64,3 +64,12 @@ def test_fetch_peeks_and_builds_gmail_link():
 def test_fetch_without_message_id_uses_uid():
     m = box(FakeIMAP(raw=b"Subject: s\r\n\r\nbody")).fetch(5, 9)
     assert m.message_id == "uid:9:5"
+
+
+def test_fetch_naver_peeks_without_gmail_link():
+    imap = FakeIMAP()
+    b = box(imap)
+    b.account = "naver"
+    m = b.fetch(5, 9)
+    assert imap.calls == [("FETCH", "5", "(BODY.PEEK[])")]
+    assert (m.subject, m.link) == ("회의", "")

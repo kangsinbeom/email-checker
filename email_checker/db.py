@@ -73,3 +73,12 @@ def set_cursor(conn, account, uidvalidity, last_uid):
         (account, uidvalidity, last_uid),
     )
     conn.commit()
+
+
+def get(conn, mail_id):
+    return conn.execute("SELECT * FROM mails WHERE id = ?", (mail_id,)).fetchone()
+
+
+def set_label(conn, mail_id, label):
+    conn.execute("UPDATE mails SET label = ? WHERE id = ?", (label, mail_id))
+    conn.commit()

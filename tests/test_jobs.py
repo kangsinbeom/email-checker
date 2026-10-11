@@ -1,7 +1,9 @@
 import csv
 import io
 
-from email_checker import DELETE, HOLD, KEEP, db, jobs
+import pytest
+
+from email_checker import DELETE, HOLD, KEEP, db, jobs, report
 from email_checker.mailbox import Mail
 
 
@@ -98,3 +100,51 @@ def test_daily_closes_mailboxes_when_fetch_fails(tmp_path):
     except ZeroDivisionError:
         pass
     assert box.closed
+
+
+def reviewed(conn, text):
+    return jobs.review(conn, text.encode())
+
+
+def test_daily_reports_both_mailboxes(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    naver = FakeBox("naver", {1: mail(1, "광고")})
+    gmail = FakeBox("gmail", {1: mail(1, "회의")})  # 같은 Message-ID라도 계정이 다르면 다른 메일
+    data, _ = jobs.daily(conn, lambda: [naver, gmail], FakeClassifier())
+    assert [r[2] for r in read(data)[1:]] == ["광고", "회의"]
+
+
+def test_review_reports_initial_accuracy_as_unchanged_rows(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매"),
+                            4: mail(4, "광고"), 5: mail(5, "애매")})
+    run(conn, box)  # 예측: 1 삭제, 2 확인, 3 보류, 4 삭제, 5 보류
+    text, learned = reviewed(conn, "id,분류\n1,삭제\n2,확인\n3,확인\n4,확인\n5,보류\n")
+    assert "고치지 않은 줄: 3/5 (60%)" in text
+    assert "삭제 1/2" in text and "확인 1/1" in text
+    assert "보류였던 메일 → 삭제 0, 확인 1, 그대로 보류 1" in text
+    assert learned == 4
+    data, _ = run(conn, box)
+    assert [r[0] for r in read(data)[1:]] == ["5"]  # 보류로 남긴 줄만 다시 실린다
+
+
+def test_review_reads_cp949_csv_saved_by_excel(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    run(conn, FakeBox("gmail", {1: mail(1, "광고")}))
+    text, learned = jobs.review(conn, "id,분류,제목\r\n1, 확인 ,광고\r\n".encode("cp949"))
+    assert learned == 1 and "고치지 않은 줄: 0/1" in text
+
+
+def test_review_rejects_bad_rows_without_saving_anything(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    run(conn, FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의")}))
+    with pytest.raises(report.CsvError, match="3, 4"):
+        reviewed(conn, "id,분류\n1,확인\n2,지워\nx,확인\n")
+    assert len(db.unreviewed(conn)) == 2
+
+
+def test_review_warns_about_unknown_ids(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    run(conn, FakeBox("gmail", {1: mail(1, "광고")}))
+    text, learned = reviewed(conn, "id,분류\n1,삭제\n99,삭제\n")
+    assert learned == 1 and "99" in text

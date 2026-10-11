@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from email import policy
 
-HOSTS = {"gmail": "imap.gmail.com"}
+HOSTS = {"naver": "imap.naver.com", "gmail": "imap.gmail.com"}
 KOREAN_CHARSETS = {"ks_c_5601-1987", "ks_c_5601", "euc-kr", "euc_kr"}
 
 
@@ -71,6 +71,7 @@ class Mailbox:
         _, data = self.imap.uid("FETCH", str(uid), "(X-GM-MSGID BODY.PEEK[])" if gmail else "(BODY.PEEK[])")
         meta, raw = data[0]
         message_id, sender, subject, body = parse_message(raw)
+        # ponytail: 네이버 메일별 링크 형식을 모른다. 알게 되면 여기서 만든다.
         link = gmail_link(int(re.search(rb"X-GM-MSGID (\d+)", meta).group(1))) if gmail else ""
         return Mail(message_id or f"uid:{uidvalidity}:{uid}", sender, subject, body, link)
 

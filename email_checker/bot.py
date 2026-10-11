@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import discord
 
-from . import DELETE, HOLD, KEEP, classify, db, jobs
+from . import DELETE, HOLD, KEEP, classify, db, jobs, report
 from .mailbox import Mailbox
 
 KST = ZoneInfo("Asia/Seoul")
@@ -25,7 +25,15 @@ def run() -> None:
     lock = asyncio.Lock()  # DB와 모델을 쓰는 작업을 한 번에 하나만
 
     def open_boxes():
-        return [Mailbox("gmail", os.environ["GMAIL_USER"], os.environ["GMAIL_APP_PASSWORD"])]
+        boxes = []
+        try:
+            for a in ("naver", "gmail"):
+                boxes.append(Mailbox(a, os.environ[f"{a.upper()}_USER"], os.environ[f"{a.upper()}_APP_PASSWORD"]))
+        except Exception:
+            for b in boxes:
+                b.close()
+            raise
+        return boxes
 
     intents = discord.Intents.default()
     intents.message_content = True  # 명령과 첨부 파일을 읽으려면 필요하다
@@ -58,5 +66,21 @@ def run() -> None:
             return
         if message.content.strip() == "!보고서":
             await daily_report(message.channel)
+            return
+        for att in message.attachments:
+            if not att.filename.lower().endswith(".csv"):
+                continue
+            data = await att.read()
+            try:
+                async with lock:
+                    text, _ = await asyncio.to_thread(jobs.review, conn, data)
+            except report.CsvError as e:
+                await message.reply(f"⚠️ {e}")
+                continue
+            except Exception as e:
+                log.exception("review failed")
+                await message.reply(f"⚠️ 처리하지 못했어요: {e}")
+                continue
+            await message.reply(text)
 
     client.run(os.environ["DISCORD_TOKEN"])
