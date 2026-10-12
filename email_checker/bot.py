@@ -50,7 +50,7 @@ def run() -> None:
     async def daily_report(ch):
         try:
             async with lock:
-                data, counts = await asyncio.to_thread(jobs.daily, conn, open_boxes, model["classifier"])
+                data, counts, left = await asyncio.to_thread(jobs.daily, conn, open_boxes, model["classifier"])
         except Exception as e:
             log.exception("daily report failed")
             await ch.send(f"⚠️ 보고서를 만들지 못했어요: {e}")
@@ -60,7 +60,7 @@ def run() -> None:
             return
         name = f"보고서-{datetime.datetime.now(KST):%Y-%m-%d}.csv"
         await ch.send(f"📬 검토할 메일 {sum(counts.values())}통 (삭제 {counts[DELETE]} · 확인 {counts[KEEP]} · "
-                      f"보류 {counts[HOLD]})\n"
+                      f"보류 {counts[HOLD]})" + (f" · 이 보고서 뒤로 {left}통 남음, 검토 후 `!보고서`로 이어 받기" if left else "") + "\n"
                       "첨부 CSV의 '분류' 칸을 삭제/확인/보류로 고쳐 이 채널에 다시 올려 주세요. "
                       "고치지 않은 줄은 맞은 것으로, 보류로 둔 줄은 다음 보고서에 다시 실려요.",
                       file=discord.File(io.BytesIO(data), filename=name))

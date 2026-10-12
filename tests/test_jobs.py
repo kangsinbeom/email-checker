@@ -46,7 +46,7 @@ def run(conn, box):
 def test_daily_reports_hold_then_keep_then_delete_newest_first(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매"), 4: mail(4, "광고")})
-    data, counts = run(conn, box)
+    data, counts, _ = run(conn, box)
     assert data.startswith(b"\xef\xbb\xbf")  # Numbers/Excel이 한글을 UTF-8로 읽게 하는 BOM
     assert read(data) == [
         ["분류", "날짜", "메일함", "보낸 사람", "제목", "링크", "id"],
@@ -66,7 +66,7 @@ def test_daily_keeps_reporting_unreviewed_mail_and_fetches_only_new(tmp_path):
     box.mails[2] = mail(2, "회의")
     fetched = []
     box.fetch = lambda uid, v: fetched.append(uid) or box.mails[uid]
-    data, counts = run(conn, box)
+    data, counts, _ = run(conn, box)
     assert fetched == [2]
     assert sorted(r[-1] for r in read(data)[1:]) == ["1", "2"]
 
@@ -74,7 +74,7 @@ def test_daily_keeps_reporting_unreviewed_mail_and_fetches_only_new(tmp_path):
 def test_daily_skips_known_mail_after_uidvalidity_reset(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     run(conn, FakeBox("gmail", {1: mail(1, "광고")}))
-    data, _ = run(conn, FakeBox("gmail", {1: mail(1, "광고"), 2: mail(9, "회의")}, validity=2))
+    data, _, _ = run(conn, FakeBox("gmail", {1: mail(1, "광고"), 2: mail(9, "회의")}, validity=2))
     assert [r[4] for r in read(data)[1:]] == ["회의", "광고"]
 
 
@@ -87,9 +87,19 @@ def test_daily_neutralises_formula_in_subject_and_sender(tmp_path):
         ("'-50% 세일", "A <a@x.com>"), ("'+1", "A <a@x.com>"), ('\'=HYPERLINK("http://evil")', "'@evil")]
 
 
+def test_daily_reports_at_most_limit_and_counts_the_rest(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "REPORT_LIMIT", 2)
+    conn = db.connect(tmp_path / "t.db")
+    box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매")})
+    data, counts, left = run(conn, box)
+    assert [r[4] for r in read(data)[1:]] == ["애매", "회의"]
+    assert counts == {DELETE: 0, KEEP: 1, HOLD: 1}
+    assert left == 1
+
+
 def test_daily_with_no_mail_reports_nothing(tmp_path):
     conn = db.connect(tmp_path / "t.db")
-    _, counts = run(conn, FakeBox("gmail", {}))
+    _, counts, _ = run(conn, FakeBox("gmail", {}))
     assert sum(counts.values()) == 0
 
 
@@ -112,7 +122,7 @@ def test_daily_reports_both_mailboxes(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     naver = FakeBox("naver", {1: mail(1, "광고")})
     gmail = FakeBox("gmail", {1: mail(1, "회의", date="2026-10-05 09:00")})  # 같은 Message-ID라도 계정이 다르면 다른 메일
-    data, _ = jobs.daily(conn, lambda: [naver, gmail], FakeClassifier())
+    data, _, _ = jobs.daily(conn, lambda: [naver, gmail], FakeClassifier())
     assert [(r[2], r[4]) for r in read(data)[1:]] == [("Gmail", "회의"), ("네이버", "광고")]  # 확인이 삭제보다 먼저
 
 
@@ -126,7 +136,7 @@ def test_review_reports_initial_accuracy_as_unchanged_rows(tmp_path):
     assert "삭제 1/2" in text and "확인 1/1" in text
     assert "보류였던 메일 → 삭제 0, 확인 1, 그대로 보류 1" in text
     assert learned == 4
-    data, _ = run(conn, box)
+    data, _, _ = run(conn, box)
     assert [r[-1] for r in read(data)[1:]] == ["5"]  # 보류로 남긴 줄만 다시 실린다
 
 
@@ -163,6 +173,6 @@ def test_reset_predictions_reclassifies_only_unreviewed_mail(tmp_path):
         def classify(self, *a):
             return DELETE
 
-    data, _ = jobs.daily(conn, lambda: [box], AllDelete())
+    data, _, _ = jobs.daily(conn, lambda: [box], AllDelete())
     assert [(r[0], r[-1]) for r in read(data)[1:]] == [(DELETE, "2")]
     assert db.get(conn, 1)["predicted"] == DELETE  # 검토한 메일의 예측은 그대로(정답률 기록용)

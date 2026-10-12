@@ -2,6 +2,8 @@ from collections import Counter
 
 from . import DELETE, HOLD, KEEP, db, report
 
+REPORT_LIMIT = 100  # 한 번에 검토하기 버거우면 줄인다
+
 
 def collect(conn, box) -> int:
     validity = box.uidvalidity()
@@ -26,9 +28,10 @@ def daily(conn, open_boxes, classifier):
             b.close()
     for row in db.unpredicted(conn):
         db.set_predicted(conn, row["id"], classifier.classify(row["sender"], row["subject"], row["body"]))
-    rows = db.unreviewed(conn)
+    unreviewed = db.unreviewed(conn)
+    rows = unreviewed[:REPORT_LIMIT]
     counts = {label: sum(r["predicted"] == label for r in rows) for label in (DELETE, KEEP, HOLD)}
-    return report.write_report(rows), counts
+    return report.write_report(rows), counts, len(unreviewed) - len(rows)
 
 
 def review(conn, data):
