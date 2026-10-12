@@ -1,0 +1,15 @@
+[Unit]
+Description=email-checker Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ogonge
+WorkingDirectory=/home/ogonge/email-checker
+EnvironmentFile=/home/ogonge/email-checker/.env
+ExecStart=/home/ogonge/.local/bin/uv run --frozen python main.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
