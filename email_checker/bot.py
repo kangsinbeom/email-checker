@@ -98,6 +98,11 @@ def run() -> None:
         verdict = "새 모델로 교체했어요. 다음 보고서는 남은 메일을 새 모델로 다시 분류해요" if new >= old else "기존 모델이 더 나아서 교체하지 않았어요"
         await ch.send(f"재학습 끝: 시험 정확도(삭제·확인 각각 맞힌 비율의 평균) 기존 {old:.0%} → 새 모델 {new:.0%}. {verdict}.")
 
+    def schedule_retrain(ch):
+        task = asyncio.create_task(retrain(ch))
+        background.add(task)
+        task.add_done_callback(background.discard)
+
     @client.event
     async def on_ready():
         if model["classifier"] is None:
@@ -110,6 +115,11 @@ def run() -> None:
             return
         if message.content.strip() == "!보고서":
             await daily_report(message.channel)
+            return
+        if message.content.strip() == "!재학습":
+            if retrain_lock.locked():
+                await message.reply("이미 재학습 중이에요. 끝나면 이어서 한 번 더 돌릴게요.")
+            schedule_retrain(message.channel)
             return
         for att in message.attachments:
             if not att.filename.lower().endswith(".csv"):
@@ -127,8 +137,6 @@ def run() -> None:
                 continue
             await message.reply(text)
             if learned:
-                task = asyncio.create_task(retrain(message.channel))
-                background.add(task)
-                task.add_done_callback(background.discard)
+                schedule_retrain(message.channel)
 
     client.run(os.environ["DISCORD_TOKEN"])
