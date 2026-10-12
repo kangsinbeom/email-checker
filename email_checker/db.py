@@ -55,7 +55,8 @@ def set_predicted(conn, mail_id, label):
 
 def unreviewed(conn):
     return conn.execute(
-        "SELECT * FROM mails WHERE source = 'mail' AND label IS NULL ORDER BY date DESC, id DESC"
+        "SELECT * FROM mails WHERE source = 'mail' AND label IS NULL ORDER BY"
+        " CASE predicted WHEN '보류' THEN 0 WHEN '확인' THEN 1 ELSE 2 END, date DESC, id DESC"
     ).fetchall()
 
 

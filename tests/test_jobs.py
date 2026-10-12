@@ -43,18 +43,19 @@ def run(conn, box):
     return jobs.daily(conn, lambda: [box], FakeClassifier())
 
 
-def test_daily_reports_every_unreviewed_mail_newest_first(tmp_path):
+def test_daily_reports_hold_then_keep_then_delete_newest_first(tmp_path):
     conn = db.connect(tmp_path / "t.db")
-    box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매")})
+    box = FakeBox("gmail", {1: mail(1, "광고"), 2: mail(2, "회의"), 3: mail(3, "애매"), 4: mail(4, "광고")})
     data, counts = run(conn, box)
     assert data.startswith(b"\xef\xbb\xbf")  # Numbers/Excel이 한글을 UTF-8로 읽게 하는 BOM
     assert read(data) == [
         ["분류", "날짜", "메일함", "보낸 사람", "제목", "링크", "id"],
         [HOLD, "2026-10-03 09:00", "Gmail", "A <a@x.com>", "애매", "https://mail.google.com/mail/u/0/#all/3", "3"],
         [KEEP, "2026-10-02 09:00", "Gmail", "A <a@x.com>", "회의", "https://mail.google.com/mail/u/0/#all/2", "2"],
+        [DELETE, "2026-10-04 09:00", "Gmail", "A <a@x.com>", "광고", "https://mail.google.com/mail/u/0/#all/4", "4"],
         [DELETE, "2026-10-01 09:00", "Gmail", "A <a@x.com>", "광고", "https://mail.google.com/mail/u/0/#all/1", "1"],
     ]
-    assert counts == {DELETE: 1, KEEP: 1, HOLD: 1}
+    assert counts == {DELETE: 2, KEEP: 1, HOLD: 1}
     assert box.closed
 
 
@@ -112,7 +113,7 @@ def test_daily_reports_both_mailboxes(tmp_path):
     naver = FakeBox("naver", {1: mail(1, "광고")})
     gmail = FakeBox("gmail", {1: mail(1, "회의", date="2026-10-05 09:00")})  # 같은 Message-ID라도 계정이 다르면 다른 메일
     data, _ = jobs.daily(conn, lambda: [naver, gmail], FakeClassifier())
-    assert [(r[2], r[4]) for r in read(data)[1:]] == [("Gmail", "회의"), ("네이버", "광고")]
+    assert [(r[2], r[4]) for r in read(data)[1:]] == [("Gmail", "회의"), ("네이버", "광고")]  # 확인이 삭제보다 먼저
 
 
 def test_review_reports_initial_accuracy_as_unchanged_rows(tmp_path):
