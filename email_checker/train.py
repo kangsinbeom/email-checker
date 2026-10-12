@@ -38,7 +38,9 @@ def run_laya(work: Path) -> Path:
     subprocess.run(
         ["nice", "-n", "10", str(Path(sys.executable).with_name("laya-train")),
          "--data", str(work / "train.jsonl"), "--eval", str(work / "eval.jsonl"),
-         "--base", "multilingual", "--out", str(candidate), "--device", "cpu"],
+         "--base", "multilingual", "--out", str(candidate), "--device", "cpu",
+         # 기본값(8×8)은 290통 학습에서 14.8GB를 써 서버(14GB)에서 OOM이 났다. 2×32는 최대 3.3GB(2026-10-12 실측).
+         "--micro-batch", "2", "--grad-accum", "32"],
         check=True, capture_output=True, text=True,
     )
     return candidate
